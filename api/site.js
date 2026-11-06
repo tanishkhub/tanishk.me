@@ -170,6 +170,17 @@ async function saveUpload(res, body) {
   return sendJson(res, 200, { ok: true, path: upload.path });
 }
 
+function uploadErrorMessage(error) {
+  const statusMatch = /GitHub (?:read|write) failed with (\d+)/.exec(error.message);
+  const githubStatus = Number(statusMatch?.[1]);
+  if (githubStatus === 401) return 'GitHub rejected GITHUB_TOKEN. Replace it with an active fine-grained token.';
+  if (githubStatus === 403) return 'GitHub denied this write. Give the token Contents read and write access to this repository.';
+  if (githubStatus === 404) return 'GitHub could not find the repository, branch, or upload path. Check GITHUB_REPOSITORY and GITHUB_BRANCH.';
+  if (githubStatus === 409 || githubStatus === 422) return 'GitHub rejected the file update. Retry once; if it persists, check repository write access.';
+  if (Number.isInteger(githubStatus) && githubStatus > 0) return `GitHub upload failed with status ${githubStatus}. Check the token and repository permissions.`;
+  return 'Could not save the uploaded file. Check the Vercel function logs and GitHub settings.';
+}
+
 async function saveContent(res, updated) {
   const isLocalStorageEnabled = localStorageEnabled();
   let current;
@@ -250,7 +261,7 @@ module.exports = async function handler(req, res) {
       return await saveUpload(res, body);
     } catch (error) {
       console.error('Portfolio upload failed:', error.message);
-      return sendJson(res, 502, { error: 'Could not save the uploaded file. Try again.' });
+      return sendJson(res, 502, { error: uploadErrorMessage(error) });
     }
   }
   if (body.action !== 'save') return sendJson(res, 400, { error: 'Unknown editor action.' });
